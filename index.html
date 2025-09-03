@@ -71,8 +71,8 @@
           Welcome, <span id="welcomeName" class="font-bold"></span>!
         </p>
         <div class="mt-4 text-sm text-gray-400 font-mono select-all">
-          Your User ID:
-          <span id="userIdDisplay" class="text-gray-600 font-bold"
+          Your Session ID:
+          <span id="sessionIdDisplay" class="text-gray-600 font-bold"
             >Loading...</span
           >
         </div>
@@ -113,7 +113,7 @@
           Who's In Today
         </h2>
         <div id="statusMessage" class="text-center text-gray-400 p-6">
-          Loading checked-in users...
+          Nobody is checked in yet. Be the first!
         </div>
         <div
           id="inList"
@@ -129,7 +129,7 @@
           Check-in History
         </h2>
         <div id="historyMessage" class="text-center text-gray-400 p-6">
-          Loading history...
+          No history available.
         </div>
         <div
           id="historyList"
@@ -159,33 +159,8 @@
       </div>
     </div>
 
-    <!-- Firebase Scripts -->
     <script type="module">
-      import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-      import {
-        getAuth,
-        signInAnonymously,
-        signInWithCustomToken,
-        onAuthStateChanged,
-      } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-      import {
-        getFirestore,
-        doc,
-        addDoc,
-        updateDoc,
-        onSnapshot,
-        collection,
-        query,
-        where,
-        serverTimestamp,
-      } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-      let db,
-        auth,
-        userId,
-        appId,
-        userCheckInDocId = null;
-      let userName, userRole;
+      let sessionId, userName, userRole;
 
       // Custom Message Box Function
       const showMessage = (title, message) => {
@@ -198,50 +173,6 @@
         document.getElementById("messageModal").classList.add("hidden");
       };
 
-      // --- Firebase Initialization ---
-      const firebaseConfig = JSON.parse(
-        typeof __firebase_config !== "undefined" ? __firebase_config : "{}"
-      );
-      appId = typeof __app_id !== "undefined" ? __app_id : "default-app-id";
-
-      if (Object.keys(firebaseConfig).length > 0) {
-        const app = initializeApp(firebaseConfig);
-        db = getFirestore(app);
-        auth = getAuth(app);
-
-        console.log("Firebase initialized");
-
-        onAuthStateChanged(auth, async (user) => {
-          if (user) {
-            userId = user.uid;
-            document.getElementById("userIdDisplay").innerText = userId;
-            console.log("Authenticated with user ID:", userId);
-            // No automatic listener setup, wait for login
-          } else {
-            console.log("No user signed in. Attempting sign-in...");
-            try {
-              if (typeof __initial_auth_token !== "undefined") {
-                await signInWithCustomToken(auth, __initial_auth_token);
-              } else {
-                await signInAnonymously(auth);
-              }
-            } catch (error) {
-              console.error("Authentication failed:", error);
-              showMessage(
-                "Error",
-                "Authentication failed. Please refresh the page."
-              );
-            }
-          }
-        });
-      } else {
-        showMessage(
-          "Error",
-          "Firebase configuration not found. Please provide firebase config."
-        );
-        console.error("Firebase configuration not found.");
-      }
-
       // --- Page Transition Logic ---
       const showMainApp = () => {
         document.getElementById("loginPage").classList.add("hidden");
@@ -250,159 +181,103 @@
         document.getElementById("mainApp").classList.remove("scale-0");
       };
 
-      // --- Real-time data listeners ---
-      const setupRealtimeListeners = () => {
-        if (!db || !userId) {
-          console.log(
-            "Database or user ID not ready. Skipping listener setup."
-          );
-          return;
-        }
+      // --- LocalStorage Logic ---
+      const getHistory = () => {
+        const history = localStorage.getItem("checkinHistory");
+        return history ? JSON.parse(history) : [];
+      };
 
-        const checkinsCollection = collection(
-          db,
-          `artifacts/${appId}/public/data/officeCheckins`
-        );
-        const qActive = query(
-          checkinsCollection,
-          where("checkOutTime", "==", null)
-        );
+      const saveHistory = (history) => {
+        localStorage.setItem("checkinHistory", JSON.stringify(history));
+      };
 
+      // --- Update UI from LocalStorage ---
+      const updateUI = () => {
+        const history = getHistory();
+        const inList = document.getElementById("inList");
+        const historyList = document.getElementById("historyList");
         const statusMessage = document.getElementById("statusMessage");
-
-        onSnapshot(
-          qActive,
-          (snapshot) => {
-            const inList = document.getElementById("inList");
-            inList.innerHTML = "";
-
-            const checkedInUsers = [];
-            let isUserCheckedIn = false;
-            snapshot.forEach((doc) => {
-              const data = doc.data();
-              if (data.userId === userId) {
-                isUserCheckedIn = true;
-                userCheckInDocId = doc.id;
-              }
-              checkedInUsers.push(data);
-            });
-
-            if (isUserCheckedIn) {
-              document.getElementById("checkInForm").classList.add("hidden");
-              document
-                .getElementById("checkOutForm")
-                .classList.remove("hidden");
-            } else {
-              document.getElementById("checkInForm").classList.remove("hidden");
-              document.getElementById("checkOutForm").classList.add("hidden");
-              userCheckInDocId = null;
-            }
-
-            if (checkedInUsers.length === 0) {
-              statusMessage.textContent = `Nobody is checked in yet. Be the first!`;
-              statusMessage.classList.remove("hidden");
-            } else {
-              statusMessage.classList.add("hidden");
-              checkedInUsers.forEach((user) => {
-                const checkInCard = document.createElement("div");
-                checkInCard.className = "bg-white p-4 rounded-lg shadow-md";
-                const checkInTimeText = user.checkInTime
-                  ? new Date(
-                      user.checkInTime.seconds * 1000
-                    ).toLocaleTimeString()
-                  : "Pending...";
-                checkInCard.innerHTML = `
-                            <div class="flex items-center space-x-3">
-                                <div class="bg-blue-100 text-blue-600 font-bold w-10 h-10 flex items-center justify-center rounded-full text-xl">
-                                    ${user.name.charAt(0).toUpperCase()}
-                                </div>
-                                <div>
-                                    <h3 class="font-semibold text-gray-800">${
-                                      user.name
-                                    }</h3>
-                                    <p class="text-sm text-gray-500">${
-                                      user.role
-                                    }</p>
-                                </div>
-                            </div>
-                            <div class="mt-2 text-xs text-gray-400">
-                                Checked In: ${checkInTimeText}
-                            </div>
-                        `;
-                inList.appendChild(checkInCard);
-              });
-            }
-          },
-          (error) => {
-            console.error("Error fetching active users:", error);
-            showMessage(
-              "Error",
-              "Failed to load checked-in users. Please check your internet connection."
-            );
-            statusMessage.textContent = "Failed to load users.";
-            statusMessage.classList.remove("hidden");
-          }
-        );
-
-        // Listener for all history
-        const qHistory = query(checkinsCollection);
         const historyMessage = document.getElementById("historyMessage");
 
-        onSnapshot(
-          qHistory,
-          (snapshot) => {
-            const historyList = document.getElementById("historyList");
-            historyList.innerHTML = "";
+        inList.innerHTML = "";
+        historyList.innerHTML = "";
 
-            let historyRecords = [];
-            snapshot.forEach((doc) => {
-              historyRecords.push(doc.data());
-            });
+        const checkedInUsers = history.filter((item) => !item.checkOutTime);
+        let isUserCheckedIn = false;
 
-            // Sort the history by check-in time, handling potential null timestamps
-            historyRecords.sort((a, b) => {
-              const timeA = a.checkInTime?.seconds || 0;
-              const timeB = b.checkInTime?.seconds || 0;
-              return timeB - timeA;
-            });
+        if (sessionId) {
+          isUserCheckedIn = checkedInUsers.some(
+            (user) => user.sessionId === sessionId
+          );
+        }
 
-            if (historyRecords.length === 0) {
-              historyMessage.textContent = "No history available.";
-              historyMessage.classList.remove("hidden");
-            } else {
-              historyMessage.classList.add("hidden");
-              historyRecords.forEach((record) => {
-                const historyCard = document.createElement("div");
-                historyCard.className =
-                  "p-4 border border-gray-200 rounded-lg bg-gray-100";
-                const checkInTime = record.checkInTime
-                  ? new Date(record.checkInTime.seconds * 1000).toLocaleString()
-                  : "Pending...";
-                let checkOutTime = "N/A";
-                if (record.checkOutTime) {
-                  checkOutTime = new Date(
-                    record.checkOutTime.seconds * 1000
-                  ).toLocaleString();
-                }
-                historyCard.innerHTML = `
-                            <p class="font-semibold text-gray-800">${record.name} (${record.role})</p>
-                            <p class="text-sm text-gray-500">Checked In: ${checkInTime}</p>
-                            <p class="text-sm text-gray-500">Checked Out: ${checkOutTime}</p>
-                        `;
-                historyList.appendChild(historyCard);
-              });
-            }
-          },
-          (error) => {
-            console.error("Error fetching history:", error);
-            showMessage(
-              "Error",
-              "Failed to load history. Please check your internet connection."
-            );
-            historyMessage.textContent = "Failed to load history.";
-            historyMessage.classList.remove("hidden");
-          }
+        if (isUserCheckedIn) {
+          document.getElementById("checkInForm").classList.add("hidden");
+          document.getElementById("checkOutForm").classList.remove("hidden");
+        } else {
+          document.getElementById("checkInForm").classList.remove("hidden");
+          document.getElementById("checkOutForm").classList.add("hidden");
+        }
+
+        // Populate Who's In Today list
+        if (checkedInUsers.length === 0) {
+          statusMessage.classList.remove("hidden");
+        } else {
+          statusMessage.classList.add("hidden");
+          checkedInUsers.forEach((user) => {
+            const checkInCard = document.createElement("div");
+            checkInCard.className = "bg-white p-4 rounded-lg shadow-md";
+            const checkInTimeText = user.checkInTime
+              ? new Date(user.checkInTime).toLocaleTimeString()
+              : "Pending...";
+            checkInCard.innerHTML = `
+                        <div class="flex items-center space-x-3">
+                            <div class="bg-blue-100 text-blue-600 font-bold w-10 h-10 flex items-center justify-center rounded-full text-xl">
+                                ${user.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                                <h3 class="font-semibold text-gray-800">${
+                                  user.name
+                                }</h3>
+                                <p class="text-sm text-gray-500">${
+                                  user.role
+                                }</p>
+                            </div>
+                        </div>
+                        <div class="mt-2 text-xs text-gray-400">
+                            Checked In: ${checkInTimeText}
+                        </div>
+                    `;
+            inList.appendChild(checkInCard);
+          });
+        }
+
+        // Populate History list
+        const sortedHistory = [...history].sort(
+          (a, b) => new Date(b.checkInTime) - new Date(a.checkInTime)
         );
+        if (sortedHistory.length === 0) {
+          historyMessage.classList.remove("hidden");
+        } else {
+          historyMessage.classList.add("hidden");
+          sortedHistory.forEach((record) => {
+            const historyCard = document.createElement("div");
+            historyCard.className =
+              "p-4 border border-gray-200 rounded-lg bg-gray-100";
+            const checkInTime = record.checkInTime
+              ? new Date(record.checkInTime).toLocaleString()
+              : "Pending...";
+            const checkOutTime = record.checkOutTime
+              ? new Date(record.checkOutTime).toLocaleString()
+              : "N/A";
+            historyCard.innerHTML = `
+                        <p class="font-semibold text-gray-800">${record.name} (${record.role})</p>
+                        <p class="text-sm text-gray-500">Checked In: ${checkInTime}</p>
+                        <p class="text-sm text-gray-500">Checked Out: ${checkOutTime}</p>
+                    `;
+            historyList.appendChild(historyCard);
+          });
+        }
       };
 
       // --- Event Handlers ---
@@ -420,72 +295,56 @@
 
         userName = loginName;
         userRole = loginRole;
+        sessionId = crypto.randomUUID(); // Generate a unique session ID
         document.getElementById("welcomeName").innerText = userName;
+        document.getElementById("sessionIdDisplay").innerText = sessionId;
 
         showMainApp();
-        setupRealtimeListeners();
+        updateUI();
       });
 
-      document
-        .getElementById("checkInBtn")
-        .addEventListener("click", async () => {
-          if (!userId) {
-            showMessage(
-              "Error",
-              "Authentication not ready. Please wait a moment and try again."
-            );
-            return;
-          }
+      document.getElementById("checkInBtn").addEventListener("click", () => {
+        const history = getHistory();
+        const newEntry = {
+          sessionId: sessionId,
+          name: userName,
+          role: userRole,
+          checkInTime: new Date().toISOString(),
+          checkOutTime: null,
+        };
+        history.push(newEntry);
+        saveHistory(history);
+        showMessage("Success!", "Check In Done.");
+        updateUI();
+      });
 
-          try {
-            const docRef = await addDoc(
-              collection(db, `artifacts/${appId}/public/data/officeCheckins`),
-              {
-                userId: userId,
-                name: userName,
-                role: userRole,
-                checkInTime: serverTimestamp(),
-                checkOutTime: null,
-              }
-            );
-            console.log("Document written with ID: ", docRef.id);
-            showMessage("Success!", "Check In Done.");
-          } catch (e) {
-            console.error("Error adding document: ", e);
-            showMessage("Error", "Failed to check in. Please try again.");
-          }
-        });
+      document.getElementById("checkOutBtn").addEventListener("click", () => {
+        const history = getHistory();
+        const sessionIndex = history.findIndex(
+          (item) => item.sessionId === sessionId
+        );
 
-      document
-        .getElementById("checkOutBtn")
-        .addEventListener("click", async () => {
-          if (!userCheckInDocId) {
-            showMessage(
-              "Error",
-              "You are not currently checked in or there was an issue finding your session."
-            );
-            return;
-          }
+        if (sessionIndex === -1) {
+          showMessage(
+            "Error",
+            "You are not currently checked in or there was an issue finding your session."
+          );
+          return;
+        }
 
-          try {
-            const docRef = doc(
-              db,
-              `artifacts/${appId}/public/data/officeCheckins`,
-              userCheckInDocId
-            );
-            await updateDoc(docRef, {
-              checkOutTime: serverTimestamp(),
-            });
-            console.log("Document successfully updated for check-out!");
-            showMessage(
-              "Success!",
-              "You have been successfully checked out. Have a great day!"
-            );
-          } catch (e) {
-            console.error("Error updating document: ", e);
-            showMessage("Error", "Failed to check out. Please try again.");
-          }
-        });
+        history[sessionIndex].checkOutTime = new Date().toISOString();
+        saveHistory(history);
+        showMessage(
+          "Success!",
+          "You have been successfully checked out. Have a great day!"
+        );
+        updateUI();
+      });
+
+      // Initial UI update on page load
+      window.onload = () => {
+        updateUI();
+      };
     </script>
   </body>
 </html>
