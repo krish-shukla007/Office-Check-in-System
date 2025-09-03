@@ -10,8 +10,22 @@
       @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap");
       body {
         font-family: "Inter", sans-serif;
-        background-color: #f3f4d6;
+        background: linear-gradient(-45deg, #1a237e, #2c3e50, #4a148c, #1a237e);
+        background-size: 400% 400%;
+        animation: gradient-shift 30s ease infinite;
         color: #1f2937;
+      }
+
+      @keyframes gradient-shift {
+        0% {
+          background-position: 0% 50%;
+        }
+        50% {
+          background-position: 100% 50%;
+        }
+        100% {
+          background-position: 0% 50%;
+        }
       }
     </style>
   </head>
@@ -191,16 +205,14 @@
         localStorage.setItem("checkinHistory", JSON.stringify(history));
       };
 
-      // --- Update UI from LocalStorage ---
-      const updateUI = () => {
+      // --- UI Rendering Functions ---
+      // Renders the list of currently checked-in users
+      const renderCurrentUsers = () => {
         const history = getHistory();
         const inList = document.getElementById("inList");
-        const historyList = document.getElementById("historyList");
         const statusMessage = document.getElementById("statusMessage");
-        const historyMessage = document.getElementById("historyMessage");
 
         inList.innerHTML = "";
-        historyList.innerHTML = "";
 
         const checkedInUsers = history.filter((item) => !item.checkOutTime);
         let isUserCheckedIn = false;
@@ -219,7 +231,6 @@
           document.getElementById("checkOutForm").classList.add("hidden");
         }
 
-        // Populate Who's In Today list
         if (checkedInUsers.length === 0) {
           statusMessage.classList.remove("hidden");
         } else {
@@ -251,8 +262,16 @@
             inList.appendChild(checkInCard);
           });
         }
+      };
 
-        // Populate History list
+      // Renders the full history log
+      const renderHistory = () => {
+        const history = getHistory();
+        const historyList = document.getElementById("historyList");
+        const historyMessage = document.getElementById("historyMessage");
+
+        historyList.innerHTML = "";
+
         const sortedHistory = [...history].sort(
           (a, b) => new Date(b.checkInTime) - new Date(a.checkInTime)
         );
@@ -300,7 +319,8 @@
         document.getElementById("sessionIdDisplay").innerText = sessionId;
 
         showMainApp();
-        updateUI();
+        renderCurrentUsers();
+        renderHistory();
       });
 
       document.getElementById("checkInBtn").addEventListener("click", () => {
@@ -315,7 +335,8 @@
         history.push(newEntry);
         saveHistory(history);
         showMessage("Success!", "Check In Done.");
-        updateUI();
+        renderCurrentUsers();
+        renderHistory();
       });
 
       document.getElementById("checkOutBtn").addEventListener("click", () => {
@@ -338,12 +359,14 @@
           "Success!",
           "You have been successfully checked out. Have a great day!"
         );
-        updateUI();
+        renderCurrentUsers();
+        renderHistory();
       });
 
       // Initial UI update on page load
       window.onload = () => {
-        updateUI();
+        renderCurrentUsers();
+        renderHistory();
       };
     </script>
   </body>
